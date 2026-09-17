@@ -1,0 +1,17 @@
+services:
+
+  forage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    restart: unless-stopped
+
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY}
+
+    volumes:
+      - forage-data:/data
+
+volumes:
+  forage-data:
