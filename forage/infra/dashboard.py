@@ -36,7 +36,7 @@ if HAS_FASTAPI:
         if not x_api_key or not secrets.compare_digest(x_api_key, expected):
             raise HTTPException(status_code=401, detail="Invalid API key")
 
-    def _execute_funnel_architect(description: str) -> dict:
+    def _build_nexus_orchestrator():
         if _config is None:
             raise RuntimeError("Dashboard is not initialized")
 
@@ -44,6 +44,10 @@ if HAS_FASTAPI:
         from forage.economy.ledger import Ledger
         from forage.economy.wallet import Wallet
         from forage.infra.llm import LLMRouter
+        from forage.knowledge.store import KnowledgeStore
+        from forage.orchestration.agents.funnel import FunnelAgent
+        from forage.orchestration.orchestrator import NexusOrchestrator
+        from forage.orchestration.registry import AgentRegistry
         from forage.safety.audit import AuditLog
         from forage.safety.limits import SpendingLimiter
 
@@ -52,12 +56,28 @@ if HAS_FASTAPI:
         limiter = SpendingLimiter(_config)
         ledger = Ledger(_config)
         wallet = Wallet(_config, ledger, limiter)
-        capability = FunnelArchitectCapability(_config)
 
-        return capability.execute(
+        registry = AgentRegistry()
+        if _config.capabilities.funnel_architect:
+            registry.register(
+                FunnelAgent(
+                    capability=FunnelArchitectCapability(_config),
+                    wallet=wallet,
+                    llm=llm,
+                )
+            )
+
+        return NexusOrchestrator(
+            registry=registry,
+            knowledge=KnowledgeStore(_config),
+            audit=audit,
+        )
+
+    def _execute_funnel_architect(description: str) -> dict:
+        orchestrator = _build_nexus_orchestrator()
+        return orchestrator.execute(
+            "funnel",
             {"description": description},
-            wallet,
-            llm,
         )
 
     @app.get("/", response_class=HTMLResponse)
