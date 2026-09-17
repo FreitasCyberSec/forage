@@ -204,6 +204,28 @@ class Agent:
 
         cap_names = [c.name for c in self.capabilities]
         cap_list = ", ".join(cap_names) if cap_names else "none available"
+        action_values = ["idle", *cap_names]
+
+        decision_schema = {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": action_values,
+                },
+                "reasoning": {"type": "string"},
+                "task": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string"},
+                    },
+                    "required": ["description"],
+                    "additionalProperties": False,
+                },
+            },
+            "required": ["action", "reasoning", "task"],
+            "additionalProperties": False,
+        }
 
         # Organism drives as context
         drive_context = ""
@@ -234,20 +256,31 @@ class Agent:
             f"{drive_context}\n"
             f"Available capabilities: {cap_list}\n\n"
             f"Recent history:\n{recent_summary}\n\n"
-            f"What should I do next? Respond with JSON."
+            "Choose exactly one available capability or idle. "
+            "Always provide action, reasoning, and task.description. "
+            "If action is idle, task.description must be an empty string."
         )
 
         tier = "important" if vitals["threat_level"] >= 3 else "routine"
         try:
             response = self.llm.complete(
-                prompt, system=self.genome.to_system_prompt(),
-                tier=tier, json_mode=True, max_tokens=300
+                prompt,
+                system=self.genome.to_system_prompt(),
+                tier=tier,
+                max_tokens=300,
+                temperature=0.2,
+                json_schema=decision_schema,
+                json_schema_name="agent_decision",
             )
             plan = json.loads(response.content)
             return plan
         except (json.JSONDecodeError, Exception) as e:
             self.audit.log("decide_error", f"Decision failed: {e}", level="warning")
-            return {"action": "idle", "reasoning": f"Decision error: {e}"}
+            return {
+                "action": "idle",
+                "reasoning": f"Decision error: {e}",
+                "task": {"description": ""},
+            }
 
     def _act(self, action_plan: dict) -> dict:
         """Execute the chosen capability."""
