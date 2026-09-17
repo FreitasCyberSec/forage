@@ -117,4 +117,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_action_type ON audit_log(action_type);
+
+CREATE TABLE IF NOT EXISTS knowledge_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata_json TEXT,
+    embedding_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_scope ON knowledge_items(scope);
+CREATE INDEX IF NOT EXISTS idx_knowledge_kind ON knowledge_items(kind);
+CREATE INDEX IF NOT EXISTS idx_knowledge_created_at ON knowledge_items(created_at);
 """
