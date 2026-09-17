@@ -1,4 +1,4 @@
-name: "freitas-agent"
+name: "nexus-agent"
 
 seed:
   amount: 10.00
@@ -42,7 +42,7 @@ capabilities:
   trading: false
   freelancing: false
 
-  # Nosso módulo
+  # Primeiro modulo customizado do NEXUS
   funnel_architect: true
 
   allowed_services:
@@ -51,7 +51,7 @@ capabilities:
   deploy_targets: []
 
 evolution:
-  # Vamos ativar depois que o Funnel Architect estiver testado
+  # Vamos ativar depois que as capabilities customizadas estiverem testadas
   enabled: false
   cycle: "daily"
   strategy: "conservative"
