@@ -21,7 +21,7 @@ _config: NerfedConfig | None = None
 
 
 if HAS_FASTAPI:
-    app = FastAPI(title="Nerfed Dashboard", docs_url=None, redoc_url=None)
+    app = FastAPI(title="NEXUS Agent OS", docs_url=None, redoc_url=None)
 
     class FunnelAnalyzeRequest(BaseModel):
         description: str = Field(min_length=1, max_length=20000)
@@ -173,7 +173,7 @@ def start_dashboard(config: NerfedConfig) -> None:
 
 
 DASHBOARD_HTML = """<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Nerfed Dashboard</title>
+<html><head><meta charset="utf-8"><title>NEXUS Agent OS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -200,7 +200,7 @@ td{font-size:13px}
 section{margin-bottom:32px}
 section h2{color:#c9d1d9;font-size:16px;margin-bottom:12px;border-bottom:1px solid #21262d;padding-bottom:8px}
 </style></head><body>
-<h1><span id="status-dot" class="alive"></span>Nerfed Dashboard</h1>
+<h1><span id="status-dot" class="alive"></span>NEXUS Agent OS</h1>
 <div class="grid">
 <div class="card"><h3>Balance</h3><div class="value green" id="balance">$--</div></div>
 <div class="card"><h3>State</h3><div class="value" id="state">--</div></div>
