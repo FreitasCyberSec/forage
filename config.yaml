@@ -1,0 +1,68 @@
+name: "freitas-agent"
+
+seed:
+  amount: 10.00
+  currency: "USD"
+
+providers:
+  - name: groq
+    api_key: "${GROQ_API_KEY}"
+    models:
+      - "openai/gpt-oss-20b"
+    tier: routine
+
+hardware:
+  mode: auto
+
+revenue:
+  default:
+    owner: 0.00
+    reinvest: 1.00
+    reserve: 0.00
+  milestones: []
+
+spending:
+  daily_limit: 0.10
+  per_action_limit: 0.05
+  emergency_reserve: 9.00
+
+payout:
+  method: "manual"
+  min_payout: 5.00
+  frequency: "weekly"
+
+capabilities:
+  api_services: false
+  digital_products: false
+  content_creation: false
+  inference_service: false
+  crypto_yield: false
+  trading: false
+  freelancing: false
+
+  allowed_services:
+    - "api.groq.com"
+
+  deploy_targets: []
+
+evolution:
+  enabled: true
+  cycle: "daily"
+  strategy: "conservative"
+
+schedule:
+  wake_interval_minutes: 30
+  active_hours: null
+
+dashboard:
+  enabled: true
+  port: 3000
+  host: "0.0.0.0"
+
+logging:
+  level: "info"
+  file: "logs/forage.log"
+  max_size_mb: 50
+
+notifications:
+  enabled: false
