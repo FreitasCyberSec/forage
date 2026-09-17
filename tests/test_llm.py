@@ -26,6 +26,7 @@ class DummyHTTPResponse:
 def test_groq_structured_output_uses_direct_api(config, monkeypatch):
     """Groq JSON Schema calls must bypass LiteLLM and hit Groq directly."""
     captured = {}
+    config.providers[0].models = ["openai/gpt-oss-20b"]
 
     def fake_post(url, *, headers, json, timeout):
         captured["url"] = url
@@ -66,7 +67,7 @@ def test_groq_structured_output_uses_direct_api(config, monkeypatch):
 
     assert response.content == '{"action":"idle"}'
     assert captured["url"] == "https://api.groq.com/openai/v1/chat/completions"
-    assert captured["json"]["model"] == "llama-3.1-8b-instant"
+    assert captured["json"]["model"] == "openai/gpt-oss-20b"
     assert captured["json"]["response_format"] == {
         "type": "json_schema",
         "json_schema": {
@@ -75,4 +76,5 @@ def test_groq_structured_output_uses_direct_api(config, monkeypatch):
             "schema": schema,
         },
     }
+    assert captured["json"]["reasoning_effort"] == "low"
     assert captured["json"]["reasoning_format"] == "hidden"
