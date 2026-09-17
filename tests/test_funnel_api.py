@@ -89,3 +89,30 @@ def test_funnel_analyze_requires_enabled_capability(config, monkeypatch):
     )
 
     assert response.status_code == 403
+
+
+def test_execute_funnel_architect_routes_to_funnel_agent(config, monkeypatch):
+    dashboard._config = config
+    config.capabilities.funnel_architect = True
+
+    class FakeOrchestrator:
+        def execute(self, agent_id, task):
+            assert agent_id == "funnel"
+            assert task == {"description": "test funnel"}
+            return {
+                "success": True,
+                "cost": 0.001,
+                "revenue": 0,
+                "description": "FlowSpec criado.",
+                "artifacts": {"flowspec": {"name": "Test Funnel"}},
+            }
+
+    monkeypatch.setattr(
+        dashboard,
+        "_build_nexus_orchestrator",
+        lambda: FakeOrchestrator(),
+    )
+
+    result = dashboard._execute_funnel_architect("test funnel")
+
+    assert result["artifacts"]["flowspec"]["name"] == "Test Funnel"
