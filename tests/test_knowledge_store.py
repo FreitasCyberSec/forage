@@ -80,3 +80,23 @@ def test_search_falls_back_to_scoped_sqlite_when_vector_store_unavailable(
         "Funnel fallback",
     }
     assert all(row["scope"] != "agent:devops" for row in rows)
+
+
+def test_search_falls_back_when_vector_store_count_fails(initialized_db, monkeypatch):
+    store = KnowledgeStore(initialized_db)
+    store.add(
+        scope="global",
+        kind="rule",
+        title="Durable fallback",
+        content="SQLite remains authoritative.",
+    )
+
+    class BrokenCollection:
+        def count(self):
+            raise RuntimeError("vector store unavailable")
+
+    monkeypatch.setattr(store, "_get_collection", lambda: BrokenCollection())
+
+    rows = store.search("durable", ["global"], limit=5)
+
+    assert [row["title"] for row in rows] == ["Durable fallback"]
