@@ -1,5 +1,7 @@
 """Local web dashboard — FastAPI server with inline HTML."""
 
+import os
+import secrets
 import threading
 from pathlib import Path
 
@@ -7,8 +9,9 @@ from forage.infra.config import NerfedConfig, load_config
 from forage.infra.database import init_db, get_connection
 
 try:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Header, HTTPException
     from fastapi.responses import HTMLResponse
+    from pydantic import BaseModel, Field
     import uvicorn
     HAS_FASTAPI = True
 except ImportError:
@@ -16,8 +19,46 @@ except ImportError:
 
 _config: NerfedConfig | None = None
 
+
 if HAS_FASTAPI:
     app = FastAPI(title="Nerfed Dashboard", docs_url=None, redoc_url=None)
+
+    class FunnelAnalyzeRequest(BaseModel):
+        description: str = Field(min_length=1, max_length=20000)
+
+    def _require_funnel_api_key(x_api_key: str | None) -> None:
+        expected = os.environ.get("FORAGE_API_KEY", "")
+        if not expected:
+            raise HTTPException(
+                status_code=503,
+                detail="FORAGE_API_KEY is not configured",
+            )
+        if not x_api_key or not secrets.compare_digest(x_api_key, expected):
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
+    def _execute_funnel_architect(description: str) -> dict:
+        if _config is None:
+            raise RuntimeError("Dashboard is not initialized")
+
+        from forage.capabilities.funnel_architect import FunnelArchitectCapability
+        from forage.economy.ledger import Ledger
+        from forage.economy.wallet import Wallet
+        from forage.infra.llm import LLMRouter
+        from forage.safety.audit import AuditLog
+        from forage.safety.limits import SpendingLimiter
+
+        audit = AuditLog(_config)
+        llm = LLMRouter(_config, audit)
+        limiter = SpendingLimiter(_config)
+        ledger = Ledger(_config)
+        wallet = Wallet(_config, ledger, limiter)
+        capability = FunnelArchitectCapability(_config)
+
+        return capability.execute(
+            {"description": description},
+            wallet,
+            llm,
+        )
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
@@ -64,6 +105,47 @@ if HAS_FASTAPI:
             return [dict(r) for r in rows]
         finally:
             conn.close()
+
+    @app.post("/api/funnel/analyze")
+    async def api_funnel_analyze(
+        request: FunnelAnalyzeRequest,
+        x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    ):
+        _require_funnel_api_key(x_api_key)
+
+        if _config is None:
+            raise HTTPException(status_code=503, detail="Dashboard is not initialized")
+
+        if not _config.capabilities.funnel_architect:
+            raise HTTPException(status_code=403, detail="Funnel Architect is disabled")
+
+        try:
+            outcome = _execute_funnel_architect(request.description)
+        except Exception as exc:
+            from forage.safety.audit import AuditLog
+
+            AuditLog(_config).log(
+                "funnel_api_error",
+                f"Funnel API failed: {exc}",
+                level="error",
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Funnel analysis failed: {type(exc).__name__}",
+            ) from exc
+
+        if not outcome.get("success"):
+            raise HTTPException(
+                status_code=422,
+                detail=outcome.get("description", "Funnel analysis failed"),
+            )
+
+        return {
+            "success": True,
+            "cost": outcome.get("cost", 0),
+            "description": outcome.get("description", ""),
+            "flowspec": outcome.get("artifacts", {}).get("flowspec"),
+        }
 
 
 def get_dashboard_url(config_path: Path) -> str:
