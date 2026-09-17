@@ -417,95 +417,39 @@ class Agent:
             conn.close()
 
     def _load_capabilities(self) -> list:
-    """
-    Load all capabilities enabled in config.yaml.
-    """
+        """Load all capabilities enabled in config.yaml."""
+        caps = []
 
-    caps = []
+        try:
+            if self.config.capabilities.content_creation:
+                from forage.capabilities.content import ContentCapability
+                caps.append(ContentCapability(self.config))
+        except ImportError as e:
+            console.print(f"[yellow]Could not load content_creation: {e}[/]")
 
-    # ========================================================
-    # CONTENT CREATION
-    # ========================================================
+        try:
+            if self.config.capabilities.digital_products:
+                from forage.capabilities.digital_product import DigitalProductCapability
+                caps.append(DigitalProductCapability(self.config))
+        except ImportError as e:
+            console.print(f"[yellow]Could not load digital_products: {e}[/]")
 
-    try:
-        if self.config.capabilities.content_creation:
-            from forage.capabilities.content import ContentCapability
+        try:
+            if self.config.capabilities.funnel_architect:
+                from forage.capabilities.funnel_architect import FunnelArchitectCapability
+                caps.append(FunnelArchitectCapability(self.config))
+                console.print("[bold green]Capability loaded:[/] funnel_architect")
+        except ImportError as e:
+            console.print(f"[bold red]Could not load funnel_architect: {e}[/]")
 
-            caps.append(
-                ContentCapability(self.config)
-            )
+        if not caps:
+            console.print("[yellow]No capabilities enabled.[/]")
+        else:
+            loaded = ", ".join(capability.name for capability in caps)
+            console.print(f"[cyan]Available capabilities:[/] {loaded}")
 
-            console.print(
-                "[green]Capability loaded:[/] content_creation"
-            )
+        return caps
 
-    except ImportError as e:
-        console.print(
-            f"[yellow]Could not load content_creation: {e}[/]"
-        )
-
-    # ========================================================
-    # DIGITAL PRODUCTS
-    # ========================================================
-
-    try:
-        if self.config.capabilities.digital_products:
-            from forage.capabilities.digital_product import (
-                DigitalProductCapability,
-            )
-
-            caps.append(
-                DigitalProductCapability(self.config)
-            )
-
-            console.print(
-                "[green]Capability loaded:[/] digital_products"
-            )
-
-    except ImportError as e:
-        console.print(
-            f"[yellow]Could not load digital_products: {e}[/]"
-        )
-
-    # ========================================================
-    # FUNNEL ARCHITECT
-    # ========================================================
-
-    try:
-        if self.config.capabilities.funnel_architect:
-            from forage.capabilities.funnel_architect import (
-                FunnelArchitectCapability,
-            )
-
-            caps.append(
-                FunnelArchitectCapability(self.config)
-            )
-
-            console.print(
-                "[bold green]Capability loaded:[/] funnel_architect"
-            )
-
-    except ImportError as e:
-        console.print(
-            f"[bold red]Could not load funnel_architect: {e}[/]"
-        )
-
-    # ========================================================
-    # STATUS
-    # ========================================================
-
-    if not caps:
-        console.print(
-            "[yellow]No capabilities enabled.[/]"
-        )
-    else:
-        loaded = ", ".join(
-            capability.name
-            for capability in caps
-        )
-
-        console.print(
-            f"[cyan]Available capabilities:[/] {loaded}"
-        )
-
-    return caps
+    def _signal_stop(self) -> None:
+        console.print("\n[yellow]Stopping...[/]")
+        self._should_stop = True
