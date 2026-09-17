@@ -73,7 +73,10 @@ class LLMRouter:
                  system: str | None = None,
                  max_tokens: int = 500,
                  temperature: float = 0.7,
-                 json_mode: bool = False) -> LLMResponse:
+                 json_mode: bool = False,
+                 json_schema: dict | None = None,
+                 json_schema_name: str = "response",
+                 json_schema_strict: bool = True) -> LLMResponse:
         """Call LLM via litellm with tier-based routing and cost tracking."""
         result = self._get_provider_for_tier(tier)
         if not result:
@@ -93,7 +96,20 @@ class LLMRouter:
         }
         if provider.base_url:
             kwargs["api_base"] = provider.base_url
-        if json_mode:
+
+        # Prefer Structured Outputs when a schema is supplied. Groq's GPT-OSS
+        # models support strict JSON Schema output, which avoids json_validate_failed
+        # errors from the older JSON Object Mode.
+        if json_schema is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": json_schema_name,
+                    "strict": json_schema_strict,
+                    "schema": json_schema,
+                },
+            }
+        elif json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
         start = time.time()
