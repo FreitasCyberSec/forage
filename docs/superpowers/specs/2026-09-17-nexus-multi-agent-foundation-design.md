@@ -1,191 +1,311 @@
-# NEXUS Multi-Agent Foundation Design
+# NEXUS Autonomous Multi-Agent Survival System Design
 
 Date: 2026-09-17
 Status: Proposed for implementation
 
 ## Purpose
 
-Evolve NEXUS from a single autonomous Forage-derived agent with pluggable capabilities into a multi-agent orchestration platform while preserving the existing Forage survival, memory, economy, evolution, dashboard, API, and deployment behavior.
+Evolve NEXUS from a single autonomous Forage-derived agent into an autonomous multi-agent system that keeps the original survival/economy/evolution idea while adding specialized agents, shared knowledge, agent-specific memory, future local LLMs, and eventually safe agent creation.
 
-This phase establishes the architectural foundation only. It does not add a local LLM yet, does not enable self-evolution by default, and does not replace the current public API contract.
+The goal is not to replace Forage's core idea. The goal is to make that idea stronger: instead of one general agent trying to survive alone, NEXUS becomes the coordinating organism that can delegate work to specialized agents, learn from outcomes, accumulate knowledge, and improve how it allocates intelligence, tools, and money.
+
+## Product Vision
+
+NEXUS should eventually behave like an autonomous organization:
+
+```text
+                         NEXUS CORE
+                  survive + grow + learn
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
+     ECONOMY               MEMORY               KNOWLEDGE
+ wallet / budget       experiences / reward   global + per-agent
+        |                     |                     |
+        +---------------------+---------------------+
+                              |
+                       ORCHESTRATOR
+                              |
+         +--------------------+--------------------+
+         |                    |                    |
+    Funnel Agent         DevOps Agent        Research Agent
+         |                    |                    |
+   own knowledge          own knowledge         own knowledge
+   own tools              own tools             own tools
+         |                    |                    |
+         +--------------------+--------------------+
+                              |
+                          EXECUTION
+                              |
+                     cost / revenue / result
+                              |
+                    reflection + measurement
+                              |
+                    memory + evolution loop
+                              |
+                             repeat
+```
+
+NEXUS remains the lifecycle owner. Specialized agents are workers with bounded roles, tools, knowledge, permissions, and budgets.
 
 ## Current State
 
-The current runtime is centered on `forage.agent.core.Agent`. It owns the lifecycle loop, wallet, ledger, memory, survival engine, genome, organism, LLM router, and enabled capabilities. The main loop decides one capability, executes it, stores the outcome as experience, and optionally runs the existing evolution engine.
+The current runtime is centered on `forage.agent.core.Agent`. It already owns:
 
-The current memory implementation stores experiences in SQLite and optionally indexes them in ChromaDB. The current LLM layer already supports provider routing and has an Ollama code path, so a local model can be added later without redesigning the orchestration layer.
+- the autonomous wake/decide/act/reflect loop;
+- wallet, spending limits, ledger, and revenue handling;
+- survival logic and runway checks;
+- persistent experience memory in SQLite;
+- optional ChromaDB indexing for semantic recall;
+- genome state and the existing Forage evolution engine;
+- the LLM router;
+- capabilities, including the custom `funnel_architect` capability;
+- dashboard/API startup.
 
-The custom `funnel_architect` capability is currently the only NEXUS-specific operational capability enabled in production configuration.
+The current runtime therefore already contains the parts we want to preserve: autonomy, survival, memory, economy, and evolution.
 
-## Goals
+The new architecture must add specialization without discarding these strengths.
 
-1. Preserve existing Forage behavior and data.
-2. Add a first-class concept of specialized agents.
-3. Add a registry that can discover and address specialized agents by stable ID.
-4. Add an orchestrator that routes explicit tasks to specialized agents.
-5. Add a persistent knowledge layer with global and per-agent namespaces.
-6. Make LLM choice a dependency of the agent, not a hard-coded implementation detail.
-7. Keep the existing `/api/funnel/analyze` endpoint compatible.
-8. Prepare the system for future local LLMs, RAG, document ingestion, metrics-driven learning, and additional agents.
+## Design Principles
 
-## Non-Goals for This Phase
+1. **Preserve the working Forage core.** No full rewrite.
+2. **NEXUS owns the global objective.** Specialized agents do not independently control survival state or the master wallet.
+3. **Agents are bounded specialists.** Each agent gets a role, tools, memory scope, knowledge scope, preferred reasoning tier, permissions, and optional budget.
+4. **Knowledge is external to model weights.** Operational facts, documents, metrics, and experiences belong in memory/RAG first.
+5. **LLMs are replaceable brains.** Agents depend on `LLMRouter`, not on Groq/OpenAI/Ollama directly.
+6. **Autonomy is earned progressively.** New autonomous behaviors are enabled only after deterministic tests, evaluation, and rollback paths exist.
+7. **Agent creation is controlled.** NEXUS may eventually create agents, but only from approved templates and permission sets.
+8. **No destructive migration.** Existing DB data, Chroma experience memory, APIs, EasyPanel deployment, and CLI behavior remain compatible.
 
-- No local model installation or Ollama deployment.
-- No automatic document ingestion pipeline.
-- No autonomous creation of new agents.
-- No autonomous code rewriting.
-- No enabling `evolution.enabled` by default.
-- No replacement of `forage.agent.core.Agent` with a new runtime.
-- No repository/package rename.
-- No breaking changes to EasyPanel, Docker, current environment variables, or `/api/funnel/analyze`.
+## Scope of the Full Vision
 
-## Approaches Considered
+The full system is larger than one implementation step. It will be built in phases.
 
-### A. Rewrite the runtime around multi-agent orchestration now
+### Phase 1 — Multi-Agent Foundation
 
-Replace `forage.agent.core.Agent` with a new NEXUS runtime and move survival/evolution logic into the new core.
+Build the minimum architecture required for specialized agents without changing the current autonomous lifecycle.
 
-Advantages: clean conceptual architecture.
+Includes:
 
-Disadvantages: highest regression risk; likely to break existing state, wallet, lifecycle, dashboard, and deployed behavior. Too much change for the current maturity level.
+- `SpecializedAgent` contract;
+- `AgentRegistry`;
+- `NexusOrchestrator`;
+- `KnowledgeStore` with global and per-agent scopes;
+- first `FunnelAgent` adapter around `FunnelArchitectCapability`;
+- funnel API routed internally through the orchestrator;
+- compatibility with the current Forage loop.
 
-### B. Compatibility-layer migration — selected
+### Phase 2 — Autonomous Delegation
 
-Keep the existing Forage runtime as the lifecycle owner and introduce multi-agent orchestration beside it. Specialized agents wrap capabilities and shared services. Existing entry points continue to work while new entry points use the orchestrator.
+Connect the existing Forage decision loop to the orchestrator so the NEXUS core can choose a specialist rather than choosing only a capability.
 
-Advantages: preserves working behavior, supports incremental migration, and gives a clear path to local LLMs and additional agents.
+Includes:
 
-Disadvantages: the system temporarily contains both legacy direct-capability execution and orchestrated execution.
+- deterministic routing rules first;
+- LLM-based schema-constrained routing only when multiple agents exist;
+- task-level budgets;
+- per-agent result metrics;
+- shared outcome recording;
+- fallback to legacy capability execution during migration.
 
-### C. Independent agent microservices
+### Phase 3 — Knowledge and Learning Expansion
 
-Run each specialized agent in a separate container/service with network APIs.
+Turn accumulated information into useful operational context.
 
-Advantages: strong isolation and independent scaling.
+Includes:
 
-Disadvantages: unnecessary operational complexity now; shared memory, auth, deployment, and coordination would become harder before the agent set is large enough to justify it.
+- text/document ingestion;
+- chunking and metadata;
+- semantic retrieval;
+- knowledge promotion from successful experiences;
+- metrics summaries;
+- per-agent expertise stores;
+- global knowledge shared across agents;
+- source tracking and deduplication.
+
+### Phase 4 — Local LLM Support
+
+Add a local model without changing the agent architecture.
+
+Includes:
+
+- Ollama or another local OpenAI-compatible provider;
+- model/tier selection rules;
+- local-first routing for low-cost tasks;
+- API fallback for tasks requiring stronger reasoning;
+- health checks and provider fallback.
+
+### Phase 5 — Agent Factory
+
+Allow NEXUS to propose and create new specialists when no existing agent is suitable.
+
+The factory does not create arbitrary source code or grant arbitrary permissions.
+
+A generated agent definition contains:
+
+- stable `agent_id`;
+- role and objective;
+- approved capability set;
+- approved tool set;
+- memory scope;
+- knowledge scope;
+- preferred reasoning tier/model policy;
+- spending/budget limit;
+- permissions;
+- evaluation criteria;
+- lifespan: permanent or temporary.
+
+### Phase 6 — Teacher / Evaluator
+
+Before a generated agent is registered for production use, a Teacher/Evaluator prepares and tests it.
+
+The evaluator:
+
+1. identifies required knowledge;
+2. retrieves or attaches approved knowledge;
+3. creates representative test tasks;
+4. runs the candidate in a sandboxed execution context;
+5. scores results against explicit criteria;
+6. approves, rejects, or requests another candidate configuration.
+
+A candidate agent is never assumed competent merely because it was generated.
+
+### Phase 7 — Specialized Evolution
+
+Extend the Forage evolution concept from one global genome to versioned specialist policies/prompts.
+
+Evolution targets should initially be:
+
+- prompts;
+- routing policies;
+- retrieval strategies;
+- model-tier preferences;
+- task decomposition policies.
+
+Arbitrary self-modification of source code is out of scope until there is a much stronger sandbox, test, and rollback system.
+
+### Phase 8 — Optional Fine-Tuning / LoRA
+
+Once NEXUS has enough high-quality examples and measurable outcomes, export curated training datasets for optional fine-tuning.
+
+Operational knowledge remains in RAG/memory because frequently changing information should not require weight retraining.
 
 ## Selected Architecture
 
 ```text
-                         NEXUS RUNTIME
+                    EXISTING FORAGE LIFECYCLE
+             wake -> survive -> decide -> act -> reflect
                               |
-                Existing Forage Lifecycle Core
+                              v
+                         NEXUS CORE
                               |
-                    +---------+---------+
-                    |                   |
-             Legacy capability      NEXUS Orchestrator
-                 execution                |
-                                      Agent Registry
-                                          |
-                           +--------------+--------------+
-                           |                             |
-                      Funnel Agent                 Future Agents
-                           |                    DevOps / Data / etc.
-                    Funnel Architect
-                           |
-                           +--------------+
-                                          |
-                                  Shared Services
-                         +----------------+----------------+
-                         |                |                |
-                    LLM Router       Knowledge Store   Audit/Safety
-                         |                |
-                 APIs / Local LLM   Global + Agent scopes
+         +--------------------+--------------------+
+         |                    |                    |
+      ECONOMY              MEMORY             ORCHESTRATOR
+ wallet / ledger      AgentMemory              |
+ survival limits      reward/reflection         |
+         |                    |             Agent Registry
+         |                    |                    |
+         |                    |         +----------+----------+
+         |                    |         |                     |
+         |                    |    Funnel Agent          Future Agents
+         |                    |         |                     |
+         |                    |         +----------+----------+
+         |                    |                    |
+         |                    |             Knowledge Store
+         |                    |          global + per-agent
+         |                    |                    |
+         +--------------------+--------------------+
+                              |
+                          LLM ROUTER
+                    local / Groq / APIs
+                              |
+                           EXECUTION
+                              |
+                     cost / result / revenue
+                              |
+                     reflection + metrics
+                              |
+                   evolution / better routing
 ```
 
-The existing runtime remains responsible for survival, economy, scheduling, genome state, experience memory, and optional evolution. NEXUS orchestration becomes a task-routing layer rather than a replacement runtime.
-
-## Components
+## Component Design
 
 ### 1. Specialized Agent Contract
 
-Add a small interface for specialized agents. A specialized agent represents a role, not a separate process.
+A specialized agent represents a role, not a separate process.
 
-Each agent exposes:
+Required metadata:
 
-- `agent_id`: stable machine-readable ID, for example `funnel`.
-- `name`: human-readable name.
-- `role`: purpose and operating boundary.
-- `memory_scope`: namespace used for agent-specific knowledge.
-- `capabilities`: capability IDs owned by the agent.
-- `preferred_tier`: default LLM reasoning tier, not a hard-coded vendor/model.
-- `execute(task, context)`: executes one task and returns a normalized outcome.
+- `agent_id`: stable machine ID;
+- `name`: display name;
+- `role`: operating purpose;
+- `memory_scope`: knowledge namespace;
+- `capabilities`: capability IDs available to the agent;
+- `preferred_tier`: default LLM reasoning tier;
+- `permissions`: approved classes of action;
+- optional `budget_policy`;
+- `execute(task, context)` returning a normalized outcome.
 
-The contract must not depend directly on Groq, OpenAI, or Ollama. It receives the shared `LLMRouter` and other dependencies through construction.
+Agents receive dependencies through construction. They do not directly own provider credentials or the master wallet.
 
 ### 2. Agent Registry
 
-Add a registry responsible only for registration and lookup.
+Responsibilities:
 
-Required operations:
-
-- register an agent by unique `agent_id`;
+- register agents by unique ID;
 - reject duplicate IDs;
 - fetch an agent by ID;
-- list registered agents;
-- inspect which capabilities an agent owns.
+- list agents;
+- expose role/capability metadata;
+- expose whether an agent is enabled;
+- later support temporary agents and versioned agent definitions.
 
-The registry does not make LLM calls and does not execute business logic.
+The registry performs no LLM calls.
 
 ### 3. NEXUS Orchestrator
 
-Add an orchestrator that coordinates task execution.
+Responsibilities:
 
-Phase-one routing is deterministic:
+1. receive a task;
+2. choose or validate the target agent;
+3. retrieve relevant global knowledge;
+4. retrieve relevant agent knowledge;
+5. construct execution context;
+6. enforce task budget/permissions;
+7. invoke the agent;
+8. normalize the result;
+9. audit the action;
+10. record metrics and useful knowledge/experience.
 
-- explicit `agent_id` routes directly to that agent;
-- existing funnel API routes to `funnel`;
-- unknown or disabled agent IDs fail clearly instead of silently selecting another agent.
+Phase 1 uses explicit routing. Autonomous routing comes later.
 
-Automatic LLM-based routing is deferred until there are at least two production agents. This avoids paying for routing decisions that currently provide no value.
+### 4. Funnel Agent
 
-The orchestrator responsibilities are:
+The first specialist wraps the existing `FunnelArchitectCapability`.
 
-1. validate the requested agent;
-2. retrieve relevant global and agent knowledge;
-3. construct an execution context;
-4. invoke the specialized agent;
-5. record a structured audit event;
-6. store useful execution knowledge/experience when appropriate;
-7. return a normalized result.
+The existing capability remains the implementation that creates FlowSpec. The new Funnel Agent adds:
 
-### 4. Funnel Agent Adapter
+- specialist identity;
+- funnel-specific memory scope;
+- retrieved knowledge context;
+- orchestrator compatibility;
+- future metrics and model policy.
 
-Create the first specialized agent as an adapter around the existing `FunnelArchitectCapability`.
+No existing funnel behavior is removed.
 
-The capability remains the implementation that generates FlowSpec. The Funnel Agent adds role identity, memory scope, retrieved knowledge context, and orchestrator integration.
+### 5. Knowledge Store
 
-The existing `FunnelArchitectCapability` is not deleted in this phase.
+The knowledge layer is distinct from Forage experience memory.
 
-### 5. Knowledge Layer
+Scopes:
 
-Add a separate knowledge subsystem rather than modifying the existing Forage experience-memory table in place.
+- `global` — visible to all specialists;
+- `agent:<agent_id>` — private to one specialist unless promoted;
+- later `task:<task_id>` — short-lived task context;
+- later `project:<project_id>` — project-specific shared knowledge.
 
-The existing `AgentMemory` remains authoritative for the original Forage learning loop. This prevents migration risk and preserves historical data.
-
-The new knowledge layer stores reusable knowledge such as:
-
-- user-provided facts and instructions;
-- reusable operating rules;
-- successful patterns;
-- agent-specific domain knowledge;
-- future document chunks;
-- future metrics summaries.
-
-Namespaces:
-
-- `global`: visible to all specialized agents;
-- `agent:<agent_id>`: visible only to that specialized agent unless explicitly promoted.
-
-Persistence:
-
-- SQLite is the authoritative store;
-- ChromaDB is an optional semantic index;
-- a Chroma failure must not make the main request fail;
-- if vector search is unavailable, exact/recent SQLite retrieval remains available.
-
-Suggested table:
+Suggested persistent schema:
 
 ```text
 knowledge_items
@@ -195,202 +315,280 @@ knowledge_items
 - title
 - content
 - metadata_json
+- source
 - embedding_id
 - created_at
 - updated_at
 ```
 
-The first implementation supports text insertion and semantic retrieval. File/PDF ingestion is a later phase.
+SQLite is authoritative. ChromaDB is optional for semantic retrieval. Vector-index failure must not take the system down.
 
-### 6. Memory and Learning Relationship
+### 6. Relationship Between Memory, Knowledge, and Evolution
 
-The system will intentionally have two memory layers:
+The system intentionally keeps separate concepts:
 
-1. `AgentMemory`: existing Forage experience loop used for action, outcome, reward, reflection, success-rate calculations, and evolution fitness.
-2. `KnowledgeStore`: NEXUS shared/per-agent semantic knowledge used as context by specialized agents.
+**AgentMemory**
 
-They solve different problems and must not be conflated.
+Stores what happened:
 
-Future work can promote high-value Forage experiences into NEXUS knowledge, but phase one will not automatically copy every experience.
+- action;
+- outcome;
+- reward;
+- context;
+- reflection;
+- success/failure history.
 
-### 7. LLM Architecture
+This remains part of the original Forage learning loop.
 
-The existing `LLMRouter` remains the single LLM abstraction.
+**KnowledgeStore**
 
-Specialized agents request a reasoning tier; they do not directly call a provider.
+Stores what the system knows:
 
-This preserves the future path:
+- instructions;
+- domain knowledge;
+- successful patterns;
+- documents;
+- reusable facts;
+- metrics summaries;
+- agent expertise.
+
+**Evolution**
+
+Uses outcomes and fitness signals to improve behavior/policies over time.
+
+A future promotion process may convert high-value experiences into durable knowledge, but not every experience should become permanent knowledge.
+
+### 7. LLM Router
+
+`LLMRouter` remains the only model abstraction.
+
+Agents ask for reasoning quality/tier, not vendor names.
+
+Future policy example:
 
 ```text
-routine task  -> local Ollama model
-important     -> stronger local model or Groq
-complex       -> Groq/OpenAI/etc.
-critical      -> strongest configured provider
+routine     -> local model
+important   -> local strong model or Groq
+complex     -> Groq/OpenAI/etc.
+critical    -> strongest approved provider
 ```
 
-Adding a local LLM later should therefore be primarily configuration/deployment work plus provider validation, not an agent rewrite.
+This makes local LLM adoption a provider/configuration change instead of an agent rewrite.
 
-## Data Flow
+### 8. Global Economy and Budgets
 
-Example for the existing funnel endpoint after migration:
+There is one master economy controlled by NEXUS.
+
+Specialized agents do not receive independent unrestricted wallets.
+
+Instead:
 
 ```text
-POST /api/funnel/analyze
-        |
-        v
-API-key validation
-        |
-        v
-NexusOrchestrator.execute(agent_id="funnel", task=...)
-        |
-        +--> Registry -> FunnelAgent
-        |
-        +--> KnowledgeStore.search("global")
-        |
-        +--> KnowledgeStore.search("agent:funnel")
-        |
-        v
-FunnelAgent
-        |
-        v
-FunnelArchitectCapability
-        |
-        v
-LLMRouter
-        |
-        v
-FlowSpec result
-        |
-        +--> audit log
-        +--> optional knowledge/experience record
-        v
-same API response shape as today
+NEXUS master wallet
+    |
+    +-- Funnel task budget
+    +-- Research task budget
+    +-- DevOps task budget
 ```
+
+Budget enforcement remains centralized so multiple agents cannot independently overspend.
+
+Future routing can use cost efficiency as one metric when choosing agents/models.
+
+### 9. Agent Factory
+
+When autonomous creation is eventually enabled, the decision flow is:
+
+```text
+new task
+   |
+existing suitable agent?
+   | yes -> use it
+   |
+   no
+   |
+reusable domain or one-off task?
+   | reusable -> propose permanent specialist
+   | one-off  -> propose temporary specialist
+   |
+Agent Factory creates bounded definition
+   |
+Teacher/Evaluator prepares + tests candidate
+   |
+pass threshold?
+   | no -> reject/revise
+   | yes -> register
+   |
+execute task
+```
+
+The Agent Factory may only select from approved capabilities, tools, permissions, and model policies.
+
+It cannot invent unrestricted shell/network/filesystem access.
+
+### 10. Teacher / Evaluator
+
+The evaluator uses explicit test cases and metrics rather than self-declared confidence.
+
+Example for a future DevOps candidate:
+
+- interpret a known container failure log;
+- propose a safe diagnosis;
+- generate a valid Docker Compose change;
+- identify a rollback path;
+- avoid unsupported destructive actions.
+
+Evaluation produces a score plus failure reasons. Registration requires the configured threshold.
+
+## Autonomous Survival Flow
+
+The final target behavior is:
+
+```text
+1. WAKE
+2. CHECK SURVIVAL / WALLET / RUNWAY
+3. REVIEW CURRENT GOALS AND OPPORTUNITIES
+4. RETRIEVE RELEVANT MEMORY + KNOWLEDGE
+5. CHOOSE SPECIALIST OR IDLE
+6. ALLOCATE TASK BUDGET
+7. EXECUTE
+8. MEASURE COST / REVENUE / SUCCESS
+9. REFLECT
+10. STORE EXPERIENCE
+11. PROMOTE USEFUL KNOWLEDGE WHEN JUSTIFIED
+12. UPDATE AGENT/MODEL PERFORMANCE METRICS
+13. EVOLVE POLICIES WHEN ENABLED
+14. SLEEP
+```
+
+This preserves the original Forage survival experiment while making the available intelligence modular and expandable.
 
 ## Compatibility Rules
 
-The implementation must preserve all of the following:
+The following must remain true throughout the migration:
 
-- `forage start` continues to start the existing runtime.
-- `config.yaml` remains valid.
-- `funnel_architect: true` remains the feature flag for the current funnel function.
-- `/api/funnel/analyze` keeps its current request and response shape.
-- `FORAGE_API_KEY` remains the API authentication variable.
-- existing SQLite data remains readable.
-- existing Chroma `experiences` collection remains untouched.
-- the existing Forage evolution engine remains available and disabled/enabled only by current configuration.
-- the Docker/EasyPanel service names and package imports remain unchanged.
-
-## Error Handling
-
-- Duplicate agent registration: fail during startup with a clear configuration/programming error.
-- Unknown agent ID: return a controlled orchestration error; never route randomly.
-- Disabled agent/capability: return a controlled disabled error.
-- Specialized-agent exception: audit the type and return a normalized failure without leaking secrets.
-- Knowledge semantic-index failure: log warning and continue with SQLite/no semantic context.
-- LLM/provider failure: keep existing router behavior and surface a normalized agent failure.
-- Knowledge write failure after a successful business action: log it, but do not change the already-completed business result to failure unless SQLite durability itself is required for that operation.
+- `forage start` continues to work;
+- current `config.yaml` remains valid;
+- `funnel_architect: true` remains valid;
+- `/api/funnel/analyze` keeps its current request/response contract;
+- `FORAGE_API_KEY` remains valid;
+- current SQLite data remains readable;
+- current Chroma `experiences` collection remains untouched;
+- wallet, ledger, survival, organism, genome, and existing evolution remain available;
+- evolution remains disabled/enabled only by explicit configuration;
+- Docker/EasyPanel service names do not change during this migration;
+- package/import name `forage` remains unchanged for compatibility;
+- repository renaming is a separate future operation.
 
 ## Safety and Autonomy Boundaries
 
-This phase preserves explicit capability boundaries.
+NEXUS should become more autonomous without becoming unbounded.
 
-Specialized agents may only use dependencies and capabilities registered for them. The orchestrator does not grant arbitrary filesystem, shell, network, or code-execution access.
+Rules:
 
-The existing evolution engine remains separate from the specialized-agent registry. Evolution stays disabled in production until tests and rollback behavior are strong enough to enable it deliberately.
-
-When evolution is eventually extended to specialized agents, mutations should target versioned prompts/policies first, with evaluation and rollback, rather than arbitrary source-code rewriting.
+- no arbitrary permissions for generated agents;
+- no arbitrary source-code self-rewrite in the early architecture;
+- all agent actions are auditable;
+- budgets are centralized;
+- dangerous/destructive actions require stronger permission policies;
+- agent creation uses approved templates/capabilities;
+- generated agents are evaluated before production registration;
+- model/provider failures never silently grant broader permissions;
+- Chroma/RAG failures degrade gracefully;
+- evolution changes are versioned and reversible before they are allowed to affect production behavior.
 
 ## Proposed Package Layout
 
 ```text
 forage/
-├── agent/                       # existing Forage runtime, preserved
-├── capabilities/                # existing capabilities, preserved
+├── agent/                         # existing Forage runtime preserved
+├── capabilities/                  # existing capabilities preserved
 ├── orchestration/
 │   ├── __init__.py
-│   ├── base.py                  # SpecializedAgent contract + task/result types
-│   ├── registry.py              # AgentRegistry
-│   ├── orchestrator.py          # NexusOrchestrator
+│   ├── base.py                    # agent/task/result contracts
+│   ├── registry.py                # AgentRegistry
+│   ├── orchestrator.py            # NexusOrchestrator
+│   ├── routing.py                 # future autonomous routing
+│   ├── factory.py                 # future Agent Factory
+│   ├── evaluator.py               # future Teacher/Evaluator
 │   └── agents/
 │       ├── __init__.py
-│       └── funnel.py            # FunnelAgent adapter
+│       └── funnel.py              # first specialist
 ├── knowledge/
 │   ├── __init__.py
-│   └── store.py                 # SQLite + optional Chroma knowledge store
+│   ├── store.py                   # SQLite + optional Chroma
+│   ├── retrieval.py               # future retrieval policy
+│   └── ingestion.py               # future text/file ingestion
 └── infra/
-    ├── database.py              # add knowledge table only
-    ├── llm.py                   # remain provider abstraction
-    └── dashboard.py             # funnel API migrates to orchestrator
+    ├── database.py                # additive schema changes only
+    ├── llm.py                     # model abstraction
+    └── dashboard.py               # API integration
 ```
 
-## Testing Strategy
+## Phase 1 Testing Strategy
 
 Implementation is test-driven.
 
-Minimum tests:
+Minimum Phase 1 tests:
 
-1. Registry registers and retrieves a specialized agent.
+1. Registry registers and retrieves an agent.
 2. Duplicate agent IDs are rejected.
 3. Orchestrator executes an explicit registered agent.
 4. Unknown agent IDs fail predictably.
-5. Knowledge global scope is retrievable by an agent.
+5. Global knowledge is retrievable by an agent.
 6. Agent-specific knowledge is isolated from other agent scopes.
 7. Chroma failure does not prevent SQLite-backed operation.
-8. Funnel Agent delegates to Funnel Architect and preserves its normalized result.
-9. `/api/funnel/analyze` keeps the current authentication and response contract.
-10. Existing `AgentMemory` tests/behavior remain unchanged.
-11. Existing autonomous core can still load `funnel_architect` directly during the compatibility period.
+8. Funnel Agent delegates to Funnel Architect and preserves normalized output.
+9. `/api/funnel/analyze` keeps the current auth and response contract.
+10. Existing `AgentMemory` behavior remains unchanged.
+11. Existing autonomous core can still load `funnel_architect` directly during compatibility migration.
+12. Existing wallet/survival/evolution configuration remains unaffected by the new modules.
 
-No test in this phase requires a live Groq call. LLM calls must be mocked at unit-test level.
+No Phase 1 test requires a live Groq call. LLM behavior is mocked in unit tests.
 
-## Migration Sequence
+## Implementation Order
 
-1. Add tests for registry and knowledge namespaces.
-2. Add the knowledge table and KnowledgeStore.
-3. Add specialized-agent contract and AgentRegistry.
-4. Add NexusOrchestrator.
-5. Add FunnelAgent adapter around existing FunnelArchitectCapability.
-6. Migrate `/api/funnel/analyze` internally to the orchestrator while preserving the external contract.
-7. Run regression tests for the existing core, API, and memory behavior.
-8. Update README architecture only after implementation behavior matches the design.
+Only Phase 1 is implemented in the first code change set.
 
-The autonomous main loop will continue to execute capabilities directly in this phase. A later, separate design can migrate the main loop itself to agent-level orchestration after at least two specialized agents exist and routing behavior can be meaningfully tested.
+1. Add registry and knowledge tests.
+2. Add the additive knowledge table.
+3. Add `KnowledgeStore`.
+4. Add specialized-agent contracts.
+5. Add `AgentRegistry`.
+6. Add `NexusOrchestrator`.
+7. Add `FunnelAgent` adapter.
+8. Route the existing funnel API through the orchestrator internally.
+9. Run regression tests for core, memory, wallet, survival, API, and current funnel behavior.
+10. Update README to reflect implemented behavior, not future behavior as if already complete.
 
-## Future Phases Enabled by This Foundation
+Phase 2 begins only after Phase 1 is stable.
 
-### Local LLM
+## Success Criteria for Phase 1
 
-Configure Ollama or another local OpenAI-compatible server through `LLMRouter`. Specialized agents remain unchanged.
+Phase 1 is complete when:
 
-### Knowledge Ingestion
+- NEXUS can register at least one specialist (`funnel`);
+- the orchestrator can execute that specialist explicitly;
+- global and per-agent knowledge can be stored/retrieved persistently;
+- the funnel API works through the orchestrator without changing its external contract;
+- the original Forage autonomous loop still works;
+- original experience learning still works;
+- wallet/survival/evolution state is preserved;
+- no local LLM is required;
+- adding a local provider later does not require rewriting the specialist architecture.
 
-Add text/file/PDF ingestion, chunking, metadata, deduplication, and source tracking into `KnowledgeStore`.
+## Long-Term Success Criteria
 
-### Automatic Agent Routing
+The full NEXUS vision is reached when the system can safely:
 
-Once two or more production agents exist, add deterministic rules plus optional schema-constrained LLM routing.
-
-### Metrics-Driven Learning
-
-Store measurable outcomes and promote high-performing patterns into agent knowledge. Use those metrics to influence future decisions.
-
-### Specialized Evolution
-
-Extend the existing Forage evolution concept to versioned agent prompts/policies with evaluation, rollback, and per-agent fitness metrics.
-
-### Fine-Tuning / LoRA
-
-After sufficient high-quality examples exist, export curated datasets for optional model fine-tuning. Operational knowledge remains in RAG/memory because frequent facts should not require retraining model weights.
-
-## Success Criteria
-
-This phase is complete when:
-
-- NEXUS can register at least one specialized agent (`funnel`);
-- the orchestrator can execute that agent explicitly;
-- global and per-agent knowledge can be stored and retrieved persistently;
-- the current funnel API works through the orchestrator with the same external contract;
-- the existing Forage autonomous loop, memory, survival, wallet, and evolution configuration remain functional;
-- no local LLM is required for the system to continue working;
-- adding a future local provider does not require rewriting specialized agents.
+- survive under centralized economic constraints;
+- choose among specialized agents based on task and measured performance;
+- share global knowledge while preserving agent-specific expertise;
+- use local and remote LLMs interchangeably through routing policy;
+- ingest and retrieve large knowledge collections;
+- learn from cost, success, revenue, and failure signals;
+- propose bounded new agents when existing ones are unsuitable;
+- evaluate candidate agents before registration;
+- evolve prompts/policies with versioning and rollback;
+- optionally export high-quality datasets for fine-tuning/LoRA;
+- remain auditable and controllable by the owner throughout the process.
