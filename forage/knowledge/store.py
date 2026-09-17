@@ -113,13 +113,17 @@ class KnowledgeStore:
             return []
 
         collection = self._get_collection()
-        if collection is None or collection.count() == 0:
+        if collection is None:
             return self.recent(scope_list, limit)
 
         try:
+            collection_count = collection.count()
+            if collection_count == 0:
+                return self.recent(scope_list, limit)
+
             result = collection.query(
                 query_texts=[query],
-                n_results=min(max(limit * 3, limit), collection.count()),
+                n_results=min(max(limit * 3, limit), collection_count),
             )
             ids = [int(value) for value in result.get("ids", [[]])[0]]
         except Exception:
