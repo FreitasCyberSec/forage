@@ -1,4 +1,4 @@
-"""Configuration loader for Nerfed agent."""
+"""Configuration loader for Nerfed/Forage agent."""
 
 import os
 import re
@@ -8,6 +8,10 @@ from pathlib import Path
 
 import yaml
 
+
+# ============================================================
+# CONFIG MODELS
+# ============================================================
 
 @dataclass
 class SeedConfig:
@@ -83,6 +87,7 @@ class PayoutConfig:
 
 @dataclass
 class CapabilitiesConfig:
+    # Recursos originais do Forage
     api_services: bool = True
     digital_products: bool = True
     content_creation: bool = True
@@ -90,6 +95,10 @@ class CapabilitiesConfig:
     crypto_yield: bool = False
     trading: bool = False
     freelancing: bool = False
+
+    # Nosso módulo
+    funnel_architect: bool = False
+
     allowed_services: list[str] = field(default_factory=list)
     deploy_targets: list[str] = field(default_factory=list)
 
@@ -146,24 +155,51 @@ class NerfedConfig:
     dashboard: DashboardConfig
     logging: LoggingConfig
     notifications: NotificationsConfig
-    config_path: Path = field(default_factory=lambda: Path("config.yaml"))
-    data_dir: Path = field(default_factory=lambda: Path("data"))
 
+    config_path: Path = field(
+        default_factory=lambda: Path("config.yaml")
+    )
+
+    data_dir: Path = field(
+        default_factory=lambda: Path("data")
+    )
+
+
+# ============================================================
+# ENVIRONMENT VARIABLES
+# ============================================================
 
 def _substitute_env_vars(raw: str) -> str:
-    """Replace ${VAR_NAME} with environment variable values."""
+    """
+    Replace ${VAR_NAME} with environment variable values.
+
+    Example:
+    ${GROQ_API_KEY}
+    """
+
     def replacer(match):
         var_name = match.group(1)
         return os.environ.get(var_name, "")
-    return re.sub(r'\$\{(\w+)\}', replacer, raw)
+
+    return re.sub(r"\$\{(\w+)\}", replacer, raw)
 
 
 def _resolve_data_dir(config_path: Path) -> Path:
+    """
+    Prefer FORAGE_DATA_DIR when supplied by Docker/EasyPanel.
+    """
+
     env_dir = os.environ.get("FORAGE_DATA_DIR")
+
     if env_dir:
         return Path(env_dir)
+
     return config_path.parent / "data"
 
+
+# ============================================================
+# PARSERS
+# ============================================================
 
 def _parse_split(raw: dict) -> SplitConfig:
     return SplitConfig(
@@ -176,48 +212,96 @@ def _parse_split(raw: dict) -> SplitConfig:
 def _parse_trigger(raw: dict) -> MilestoneTrigger:
     return MilestoneTrigger(
         balance_above=raw.get("balance_above"),
-        consecutive_profitable_days=raw.get("consecutive_profitable_days"),
-        monthly_revenue_above=raw.get("monthly_revenue_above"),
-        total_earned_above=raw.get("total_earned_above"),
-        skills_count_above=raw.get("skills_count_above"),
-        generation_above=raw.get("generation_above"),
+        consecutive_profitable_days=raw.get(
+            "consecutive_profitable_days"
+        ),
+        monthly_revenue_above=raw.get(
+            "monthly_revenue_above"
+        ),
+        total_earned_above=raw.get(
+            "total_earned_above"
+        ),
+        skills_count_above=raw.get(
+            "skills_count_above"
+        ),
+        generation_above=raw.get(
+            "generation_above"
+        ),
     )
 
 
+# ============================================================
+# HARDWARE DETECTION
+# ============================================================
+
 def detect_hardware() -> HardwareConfig:
-    """Auto-detect available hardware."""
+    """
+    Auto-detect CPU, RAM and optional NVIDIA GPU.
+    """
+
     cpu_cores = os.cpu_count() or 1
     ram_gb = None
+
     try:
         import sys
+
         if sys.platform == "linux":
             with open("/proc/meminfo") as f:
                 for line in f:
                     if line.startswith("MemTotal"):
                         kb = int(line.split()[1])
-                        ram_gb = round(kb / 1024 / 1024, 1)
+                        ram_gb = round(
+                            kb / 1024 / 1024,
+                            1,
+                        )
                         break
+
         elif sys.platform == "darwin":
-            result = subprocess.run(["sysctl", "-n", "hw.memsize"],
-                                    capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
             if result.returncode == 0:
-                ram_gb = round(int(result.stdout.strip()) / 1024**3, 1)
+                ram_gb = round(
+                    int(result.stdout.strip())
+                    / 1024**3,
+                    1,
+                )
+
     except Exception:
         pass
 
     gpu_enabled = False
     gpu_vram_gb = None
     gpu_count = 0
+
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.total,count", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5
+            [
+                "nvidia-smi",
+                "--query-gpu=memory.total,count",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
+
         if result.returncode == 0:
             lines = result.stdout.strip().split("\n")
+
             gpu_count = len(lines)
             gpu_enabled = True
-            gpu_vram_gb = round(int(lines[0].split(",")[0].strip()) / 1024, 1)
+
+            gpu_vram_gb = round(
+                int(lines[0].split(",")[0].strip())
+                / 1024,
+                1,
+            )
+
     except Exception:
         pass
 
@@ -231,135 +315,437 @@ def detect_hardware() -> HardwareConfig:
     )
 
 
+# ============================================================
+# MAIN CONFIG LOADER
+# ============================================================
+
 def load_config(config_path: Path) -> NerfedConfig:
-    """Load YAML config, substitute env vars, validate, return NerfedConfig."""
+    """
+    Load YAML config, substitute environment variables,
+    detect hardware and validate configuration.
+    """
+
     config_path = Path(config_path).resolve()
-    raw_text = config_path.read_text()
-    raw_text = _substitute_env_vars(raw_text)
-    raw = yaml.safe_load(raw_text)
 
-    data_dir = _resolve_data_dir(config_path)
-    data_dir.mkdir(parents=True, exist_ok=True)
+    raw_text = config_path.read_text(
+        encoding="utf-8"
+    )
 
-    # Parse providers
+    raw_text = _substitute_env_vars(
+        raw_text
+    )
+
+    raw = yaml.safe_load(raw_text) or {}
+
+    # --------------------------------------------------------
+    # DATA DIRECTORY
+    # --------------------------------------------------------
+
+    data_dir = _resolve_data_dir(
+        config_path
+    )
+
+    data_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    # --------------------------------------------------------
+    # PROVIDERS
+    # --------------------------------------------------------
+
     providers = []
-    for p in raw.get("providers", []):
-        providers.append(ProviderConfig(
-            name=p["name"],
-            api_key=p.get("api_key", ""),
-            models=p.get("models", []),
-            tier=p.get("tier", "routine"),
-            base_url=p.get("base_url"),
-        ))
 
-    # Parse hardware
-    hw_raw = raw.get("hardware", {})
+    for p in raw.get("providers", []):
+        providers.append(
+            ProviderConfig(
+                name=p["name"],
+                api_key=p.get(
+                    "api_key",
+                    "",
+                ),
+                models=p.get(
+                    "models",
+                    [],
+                ),
+                tier=p.get(
+                    "tier",
+                    "routine",
+                ),
+                base_url=p.get(
+                    "base_url"
+                ),
+            )
+        )
+
+    # --------------------------------------------------------
+    # HARDWARE
+    # --------------------------------------------------------
+
+    hw_raw = raw.get(
+        "hardware",
+        {},
+    )
+
     if hw_raw.get("mode") == "manual":
-        gpu_raw = hw_raw.get("gpu", {})
+
+        gpu_raw = hw_raw.get(
+            "gpu",
+            {},
+        )
+
         hardware = HardwareConfig(
             mode="manual",
-            cpu_cores=hw_raw.get("cpu_cores"),
-            ram_gb=hw_raw.get("ram_gb"),
-            gpu_enabled=gpu_raw.get("enabled", False) if gpu_raw else False,
-            gpu_vram_gb=gpu_raw.get("vram_gb") if gpu_raw else None,
-            gpu_count=gpu_raw.get("count", 0) if gpu_raw else 0,
+            cpu_cores=hw_raw.get(
+                "cpu_cores"
+            ),
+            ram_gb=hw_raw.get(
+                "ram_gb"
+            ),
+            gpu_enabled=(
+                gpu_raw.get(
+                    "enabled",
+                    False,
+                )
+                if gpu_raw
+                else False
+            ),
+            gpu_vram_gb=(
+                gpu_raw.get(
+                    "vram_gb"
+                )
+                if gpu_raw
+                else None
+            ),
+            gpu_count=(
+                gpu_raw.get(
+                    "count",
+                    0,
+                )
+                if gpu_raw
+                else 0
+            ),
         )
+
     else:
         hardware = detect_hardware()
 
-    # Parse revenue
-    rev_raw = raw.get("revenue", {})
+    # --------------------------------------------------------
+    # REVENUE
+    # --------------------------------------------------------
+
+    rev_raw = raw.get(
+        "revenue",
+        {},
+    )
+
     milestones = []
-    for m in rev_raw.get("milestones", []):
-        milestones.append(MilestoneConfig(
-            name=m["name"],
-            trigger=_parse_trigger(m.get("trigger", {})),
-            split=_parse_split(m.get("split", {})),
-        ))
+
+    for m in rev_raw.get(
+        "milestones",
+        [],
+    ):
+        milestones.append(
+            MilestoneConfig(
+                name=m["name"],
+                trigger=_parse_trigger(
+                    m.get(
+                        "trigger",
+                        {},
+                    )
+                ),
+                split=_parse_split(
+                    m.get(
+                        "split",
+                        {},
+                    )
+                ),
+            )
+        )
+
     revenue = RevenueConfig(
-        default=_parse_split(rev_raw.get("default", {"owner": 0, "reinvest": 1, "reserve": 0})),
+        default=_parse_split(
+            rev_raw.get(
+                "default",
+                {
+                    "owner": 0,
+                    "reinvest": 1,
+                    "reserve": 0,
+                },
+            )
+        ),
         milestones=milestones,
     )
 
-    # Parse spending
-    sp_raw = raw.get("spending", {})
+    # --------------------------------------------------------
+    # SPENDING
+    # --------------------------------------------------------
+
+    sp_raw = raw.get(
+        "spending",
+        {},
+    )
+
     spending = SpendingConfig(
-        daily_limit=sp_raw.get("daily_limit", 5.0),
-        per_action_limit=sp_raw.get("per_action_limit", 1.0),
-        emergency_reserve=sp_raw.get("emergency_reserve", 10.0),
+        daily_limit=sp_raw.get(
+            "daily_limit",
+            5.0,
+        ),
+        per_action_limit=sp_raw.get(
+            "per_action_limit",
+            1.0,
+        ),
+        emergency_reserve=sp_raw.get(
+            "emergency_reserve",
+            10.0,
+        ),
     )
 
-    # Parse payout
-    po_raw = raw.get("payout", {})
+    # --------------------------------------------------------
+    # PAYOUT
+    # --------------------------------------------------------
+
+    po_raw = raw.get(
+        "payout",
+        {},
+    )
+
     payout = PayoutConfig(
-        method=po_raw.get("method", "manual"),
-        min_payout=po_raw.get("min_payout", 5.0),
-        frequency=po_raw.get("frequency", "weekly"),
-        wallet_address=po_raw.get("wallet_address"),
-        chain=po_raw.get("chain"),
-        stripe_account_id=po_raw.get("stripe_account_id"),
+        method=po_raw.get(
+            "method",
+            "manual",
+        ),
+        min_payout=po_raw.get(
+            "min_payout",
+            5.0,
+        ),
+        frequency=po_raw.get(
+            "frequency",
+            "weekly",
+        ),
+        wallet_address=po_raw.get(
+            "wallet_address"
+        ),
+        chain=po_raw.get(
+            "chain"
+        ),
+        stripe_account_id=po_raw.get(
+            "stripe_account_id"
+        ),
     )
 
-    # Parse capabilities
-    cap_raw = raw.get("capabilities", {})
+    # --------------------------------------------------------
+    # CAPABILITIES
+    # --------------------------------------------------------
+
+    cap_raw = raw.get(
+        "capabilities",
+        {},
+    )
+
     capabilities = CapabilitiesConfig(
-        api_services=cap_raw.get("api_services", True),
-        digital_products=cap_raw.get("digital_products", True),
-        content_creation=cap_raw.get("content_creation", True),
-        inference_service=cap_raw.get("inference_service", False),
-        crypto_yield=cap_raw.get("crypto_yield", False),
-        trading=cap_raw.get("trading", False),
-        freelancing=cap_raw.get("freelancing", False),
-        allowed_services=cap_raw.get("allowed_services", []),
-        deploy_targets=cap_raw.get("deploy_targets", []),
+
+        api_services=cap_raw.get(
+            "api_services",
+            True,
+        ),
+
+        digital_products=cap_raw.get(
+            "digital_products",
+            True,
+        ),
+
+        content_creation=cap_raw.get(
+            "content_creation",
+            True,
+        ),
+
+        inference_service=cap_raw.get(
+            "inference_service",
+            False,
+        ),
+
+        crypto_yield=cap_raw.get(
+            "crypto_yield",
+            False,
+        ),
+
+        trading=cap_raw.get(
+            "trading",
+            False,
+        ),
+
+        freelancing=cap_raw.get(
+            "freelancing",
+            False,
+        ),
+
+        # NOSSO FUNNEL ARCHITECT
+        funnel_architect=cap_raw.get(
+            "funnel_architect",
+            False,
+        ),
+
+        allowed_services=cap_raw.get(
+            "allowed_services",
+            [],
+        ),
+
+        deploy_targets=cap_raw.get(
+            "deploy_targets",
+            [],
+        ),
     )
 
-    # Parse evolution
-    ev_raw = raw.get("evolution", {})
+    # --------------------------------------------------------
+    # EVOLUTION
+    # --------------------------------------------------------
+
+    ev_raw = raw.get(
+        "evolution",
+        {},
+    )
+
     evolution = EvolutionConfig(
-        enabled=ev_raw.get("enabled", True),
-        cycle=ev_raw.get("cycle", "daily"),
-        strategy=ev_raw.get("strategy", "conservative"),
+        enabled=ev_raw.get(
+            "enabled",
+            True,
+        ),
+        cycle=ev_raw.get(
+            "cycle",
+            "daily",
+        ),
+        strategy=ev_raw.get(
+            "strategy",
+            "conservative",
+        ),
     )
 
-    # Parse schedule
-    sc_raw = raw.get("schedule", {})
+    # --------------------------------------------------------
+    # SCHEDULE
+    # --------------------------------------------------------
+
+    sc_raw = raw.get(
+        "schedule",
+        {},
+    )
+
     schedule = ScheduleConfig(
-        wake_interval_minutes=sc_raw.get("wake_interval_minutes", 30),
-        active_hours=sc_raw.get("active_hours"),
+        wake_interval_minutes=sc_raw.get(
+            "wake_interval_minutes",
+            30,
+        ),
+        active_hours=sc_raw.get(
+            "active_hours"
+        ),
     )
 
-    # Parse dashboard
-    db_raw = raw.get("dashboard", {})
+    # --------------------------------------------------------
+    # DASHBOARD
+    # --------------------------------------------------------
+
+    db_raw = raw.get(
+        "dashboard",
+        {},
+    )
+
     dashboard = DashboardConfig(
-        enabled=db_raw.get("enabled", True),
-        port=db_raw.get("port", 3000),
-        host=db_raw.get("host", "127.0.0.1"),
+        enabled=db_raw.get(
+            "enabled",
+            True,
+        ),
+        port=db_raw.get(
+            "port",
+            3000,
+        ),
+        host=db_raw.get(
+            "host",
+            "127.0.0.1",
+        ),
     )
 
-    # Parse logging
-    lg_raw = raw.get("logging", {})
+    # --------------------------------------------------------
+    # LOGGING
+    # --------------------------------------------------------
+
+    lg_raw = raw.get(
+        "logging",
+        {},
+    )
+
     logging_cfg = LoggingConfig(
-        level=lg_raw.get("level", "info"),
-        file=lg_raw.get("file", "logs/nerfed.log"),
-        max_size_mb=lg_raw.get("max_size_mb", 50),
+        level=lg_raw.get(
+            "level",
+            "info",
+        ),
+        file=lg_raw.get(
+            "file",
+            "logs/nerfed.log",
+        ),
+        max_size_mb=lg_raw.get(
+            "max_size_mb",
+            50,
+        ),
     )
 
-    # Parse notifications
-    nt_raw = raw.get("notifications", {})
+    # --------------------------------------------------------
+    # NOTIFICATIONS
+    # --------------------------------------------------------
+
+    nt_raw = raw.get(
+        "notifications",
+        {},
+    )
+
     notifications = NotificationsConfig(
-        enabled=nt_raw.get("enabled", False),
-        events=nt_raw.get("events", []),
-        discord_webhook=nt_raw.get("discord_webhook"),
-        slack_webhook=nt_raw.get("slack_webhook"),
-        telegram_bot_token=nt_raw.get("telegram_bot_token"),
-        telegram_chat_id=nt_raw.get("telegram_chat_id"),
+        enabled=nt_raw.get(
+            "enabled",
+            False,
+        ),
+        events=nt_raw.get(
+            "events",
+            [],
+        ),
+        discord_webhook=nt_raw.get(
+            "discord_webhook"
+        ),
+        slack_webhook=nt_raw.get(
+            "slack_webhook"
+        ),
+        telegram_bot_token=nt_raw.get(
+            "telegram_bot_token"
+        ),
+        telegram_chat_id=nt_raw.get(
+            "telegram_chat_id"
+        ),
     )
 
-    seed_raw = raw.get("seed", {})
+    # --------------------------------------------------------
+    # FINAL CONFIG
+    # --------------------------------------------------------
+
+    seed_raw = raw.get(
+        "seed",
+        {},
+    )
+
     config = NerfedConfig(
-        name=raw.get("name", "forage-agent"),
-        seed=SeedConfig(amount=seed_raw.get("amount", 50.0), currency=seed_raw.get("currency", "USD")),
+        name=raw.get(
+            "name",
+            "forage-agent",
+        ),
+
+        seed=SeedConfig(
+            amount=seed_raw.get(
+                "amount",
+                50.0,
+            ),
+            currency=seed_raw.get(
+                "currency",
+                "USD",
+            ),
+        ),
+
         providers=providers,
         hardware=hardware,
         revenue=revenue,
@@ -376,19 +762,90 @@ def load_config(config_path: Path) -> NerfedConfig:
     )
 
     _validate(config)
+
     return config
 
 
+# ============================================================
+# VALIDATION
+# ============================================================
+
 def _validate(config: NerfedConfig) -> None:
-    """Validate configuration values."""
+    """
+    Validate configuration before agent starts.
+    """
+
     if config.seed.amount < 10.0:
-        raise ValueError(f"Seed amount must be >= $10.00, got ${config.seed.amount}")
+        raise ValueError(
+            f"Seed amount must be >= $10.00, "
+            f"got ${config.seed.amount}"
+        )
+
     if not config.providers:
-        raise ValueError("At least one LLM provider must be configured")
+        raise ValueError(
+            "At least one LLM provider must be configured"
+        )
+
+    for provider in config.providers:
+
+        if not provider.name:
+            raise ValueError(
+                "LLM provider name cannot be empty"
+            )
+
+        if not provider.models:
+            raise ValueError(
+                f"Provider '{provider.name}' "
+                "must have at least one model"
+            )
+
+    if config.spending.daily_limit < 0:
+        raise ValueError(
+            "Daily spending limit cannot be negative"
+        )
+
+    if config.spending.per_action_limit < 0:
+        raise ValueError(
+            "Per-action spending limit cannot be negative"
+        )
+
+    if config.spending.emergency_reserve < 0:
+        raise ValueError(
+            "Emergency reserve cannot be negative"
+        )
+
     for ms in config.revenue.milestones:
-        total = ms.split.owner + ms.split.reinvest + ms.split.reserve
+
+        total = (
+            ms.split.owner
+            + ms.split.reinvest
+            + ms.split.reserve
+        )
+
         if abs(total - 1.0) > 0.01:
-            raise ValueError(f"Milestone '{ms.name}' split must sum to 1.0, got {total}")
-    default_total = config.revenue.default.owner + config.revenue.default.reinvest + config.revenue.default.reserve
+            raise ValueError(
+                f"Milestone '{ms.name}' split "
+                f"must sum to 1.0, got {total}"
+            )
+
+    default_total = (
+        config.revenue.default.owner
+        + config.revenue.default.reinvest
+        + config.revenue.default.reserve
+    )
+
     if abs(default_total - 1.0) > 0.01:
-        raise ValueError(f"Default revenue split must sum to 1.0, got {default_total}")
+        raise ValueError(
+            "Default revenue split "
+            f"must sum to 1.0, got {default_total}"
+        )
+
+    if config.dashboard.port <= 0:
+        raise ValueError(
+            "Dashboard port must be greater than 0"
+        )
+
+    if config.schedule.wake_interval_minutes <= 0:
+        raise ValueError(
+            "Wake interval must be greater than 0"
+        )
