@@ -19,6 +19,7 @@ revenue:
     owner: 0.00
     reinvest: 1.00
     reserve: 0.00
+
   milestones: []
 
 spending:
@@ -32,6 +33,7 @@ payout:
   frequency: "weekly"
 
 capabilities:
+  # Recursos originais desligados por enquanto
   api_services: false
   digital_products: false
   content_creation: false
@@ -40,13 +42,17 @@ capabilities:
   trading: false
   freelancing: false
 
+  # Nosso módulo
+  funnel_architect: true
+
   allowed_services:
     - "api.groq.com"
 
   deploy_targets: []
 
 evolution:
-  enabled: true
+  # Vamos ativar depois que o Funnel Architect estiver testado
+  enabled: false
   cycle: "daily"
   strategy: "conservative"
 
@@ -66,3 +72,8 @@ logging:
 
 notifications:
   enabled: false
+  events: []
+  discord_webhook: null
+  slack_webhook: null
+  telegram_bot_token: null
+  telegram_chat_id: null
